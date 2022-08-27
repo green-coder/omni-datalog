@@ -34,4 +34,7 @@
     [?i :item/name ?item-name]
     [?i :item/color ?item-color]])
 
+(def inputs
+  ["white"])
+
 #_(parse-query query)
