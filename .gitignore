@@ -1,3 +1,11 @@
+.cpcache
 .idea
-.nrepl-port
 *.iml
+
+.cljs_node_repl
+
+out
+node_modules
+package-lock.json
+
+.nrepl-port

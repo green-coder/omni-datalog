@@ -2,6 +2,8 @@
   (:require [com.rpl.specter :as sp]
             [malli.core :as m]))
 
+;; WIP namespace, for REPL experimentation
+
 (def db
   {:person/id {0 {:name {:first "Alice"
                          :last "A-name"}
