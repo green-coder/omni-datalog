@@ -108,6 +108,45 @@
   (is (= [[[:person/id 0] "Alice"] [[:person/id 1] "Bob"]]
          (#'o/extract-rows-from-db resolvers db '[?p :person/first-name ?person-first-name]))))
 
+(deftest common-columns-indexes-test
+  (is (= [[0 3] [3 2]]
+         (#'o/common-columns-indexes '[x a b y] '[c d y x])))
+  (is (= [[] []]
+         (#'o/common-columns-indexes '[a b c] '[d e f])))
+  (is (= [[0 1 2] [0 1 2]]
+         (#'o/common-columns-indexes '[a b c] '[a b c])))
+  (is (= [[0 1 2] [1 2 0]]
+         (#'o/common-columns-indexes '[a b c] '[c a b]))))
+
+(deftest inner-join*-test
+  (is (= '[[a1 b1 c1 c1 d1]
+           [a1 b1 c1 c1 d2]
+           [a2 b2 c2 c2 d3]]
+         (#'o/inner-join* '[[a1 b1 c1]
+                            [a2 b2 c2]]
+                          '[2]
+                          '[[c1 d1]
+                            [c1 d2]
+                            [c2 d3]
+                            [c3 d4]]
+                          '[0])))
+  (is (= '[[a1 b1 c1 c1 d1]
+           [a1 b1 c1 c1 d2]
+           [a1 b1 c1 c2 d3]
+           [a1 b1 c1 c3 d4]
+           [a2 b2 c2 c1 d1]
+           [a2 b2 c2 c1 d2]
+           [a2 b2 c2 c2 d3]
+           [a2 b2 c2 c3 d4]]
+         (#'o/inner-join* '[[a1 b1 c1]
+                            [a2 b2 c2]]
+                          '[]
+                          '[[c1 d1]
+                            [c1 d2]
+                            [c2 d3]
+                            [c3 d4]]
+                          '[]))))
+
 (deftest q-test
   (is (= [[0 "rose"] [1 "ball"]]
          (o/q '[:find ?person-id ?item-name

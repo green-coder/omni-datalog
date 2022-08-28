@@ -1,5 +1,4 @@
-(ns omni-datalog.core
-  (:require [clojure.set :as set]))
+(ns omni-datalog.core)
 
 ;; Ideas: it looks like the datalog queries could be based on pull queries.
 ;; If at some point we can be generic enough, it means that we could be based on pathom !!!
@@ -24,18 +23,7 @@
                        :where [k vs]))))
         query))
 
-;; Full join between tables 1 and 2
-(defn full-join
-  "Returns the full join between two tables."
-  [table1 join-index1 table2 join-index2]
-  (let [xxx1 (group-by #(nth % join-index1) table1)
-        xxx2 (group-by #(nth % join-index2) table2)]
-    (for [join-value (keys xxx1)
-          val1 (xxx1 join-value)
-          val2 (xxx2 join-value)]
-      (into val1 val2))))
-
-(defn select-columns
+(defn- select-columns
   "Select parts of the rows, according to column indexes."
   [rows column-indexes]
   (mapv (fn [row]
@@ -51,51 +39,59 @@
 
 #_(extract-rows-from-db resolvers db '[?p :person/id ?person-id])
 
-(defn table-join-indexes
+(defn- make-item->index [coll]
+  (into {}
+        (map-indexed (fn [index item] [item index]))
+        coll))
+
+(defn common-columns-indexes
   "Returns the indexes of columns on which to perform a table join."
   [columns1 columns2]
-  ;; FIXME: not always 1. The return format has to be changed.
-  (let [c1 (set columns1)
-        c2 (set columns2)
-        join-column (first (set/intersection c1 c2))]
-    [(-> (keep-indexed (fn [index column]
-                          (when (= column join-column)
-                            index))
-                       columns1)
-         first)
-     (-> (keep-indexed (fn [index column]
-                          (when (= column join-column)
-                            index))
-                       columns2)
-         first)]))
+  (let [columns->index1 (make-item->index columns1)
+        columns->index2 (make-item->index columns2)
+        common-columns  (filterv columns->index2 columns1)]
+    [(mapv columns->index1 common-columns)
+     (mapv columns->index2 common-columns)]))
 
-#_(table-join-indexes '[a b] '[c a])
+#_(common-columns-indexes '[x a b y] '[c d y x])
+
+;; Inner join between tables 1 and 2
+(defn- inner-join*
+  "Returns the inner join between two tables."
+  [rows1 column-indexes1 rows2 column-indexes2]
+  (let [xxx1 (group-by (fn [row] (mapv row column-indexes1)) rows1)
+        xxx2 (group-by (fn [row] (mapv row column-indexes2)) rows2)]
+    (-> (for [join-value (keys xxx1)
+              val1 (xxx1 join-value)
+              val2 (xxx2 join-value)]
+          (into val1 val2))
+        vec)))
 
 (defn inner-join-tables
   "Joins 2 tables based on columns sharing the same name."
   ([] nil)
-  ([[columns rows]] [columns rows])
-  ([[columns1 rows1] [columns2 rows2]]
-   (let [[column-index1 column-index2] (table-join-indexes columns1 columns2)]
+  ([[rows columns]] [rows columns])
+  ([[rows1 columns1] [rows2 columns2]]
+   (let [[column-indexes1 column-indexes2] (common-columns-indexes columns1 columns2)]
      ;; FIXME: get rid of redundant columns.
-     [(into columns1 columns2)
-      (full-join rows1 column-index1 rows2 column-index2)])))
+     [(inner-join* rows1 column-indexes1 rows2 column-indexes2)
+      (into columns1 columns2)])))
 
 (defn q
   "Resolves a Datalog query."
   [query resolvers db & inputs]
   (let [{:keys [find in where]} (parse-query query)
         tables (mapv (fn [[e a v :as rule]]
-                       ;; [columns rows]
-                       [[e v] (extract-rows-from-db resolvers db rule)])
+                       ;; [rows columns]
+                       [(extract-rows-from-db resolvers db rule) [e v]])
                      where)
         tables (into tables
-                     (map (fn [in-columns in-rows]
-                            [in-columns in-rows])
-                          in
-                          inputs))
-        [result-columns results-rows] (reduce inner-join-tables tables)
-        result-column->index (into {} (map-indexed (fn [index symb] [symb index])) result-columns)
+                     (map (fn [in-rows in-columns]
+                            [in-rows in-columns])
+                          inputs
+                          in))
+        [results-rows result-columns] (reduce inner-join-tables tables)
+        result-column->index (make-item->index result-columns)
         projection-indexes (mapv result-column->index find)]
     (select-columns results-rows projection-indexes)))
 
@@ -109,10 +105,10 @@
         rows4       ((-> resolvers :a->ev :item/color) db)
         rows-input1 [["white"]]]
     (-> rows1
-        (full-join 0 rows2 0)
-        (full-join 3 rows3 0)
-        (full-join 3 rows4 0)
-        (full-join 7 rows-input1 0)
+        (inner-join* [0] rows2 [0])
+        (inner-join* [3] rows3 [0])
+        (inner-join* [3] rows4 [0])
+        (inner-join* [7] rows-input1 [0])
         (select-columns [1 5])))
   ,)
 
@@ -120,6 +116,6 @@
 ;; [x] 2. Support more format for the :in nd the inputs parameters.
 ;; [x]  - [?item-name ?item-color]
 ;; [x]  - accept row sets for the inputs
-;; [ ] 3. Utility function `find-index-in-vector`, or `item->index`
+;; [x] 3. Utility function `make-item->index`
 ;; [ ] 4. Wrong assumption about the patterns of the rules, where only the attribute is known.
-;; [ ] 5. Wrong assumption about the number of join-columns between 2 given rules. Not always 1.
+;; [x] 5. Wrong assumption about the number of common-columns between 2 given tables to join. Not always 1.
