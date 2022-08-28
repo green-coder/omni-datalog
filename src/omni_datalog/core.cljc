@@ -112,10 +112,17 @@
         (select-columns [1 5])))
   ,)
 
-;; [ ] 1. Consecutive rules may not be related. inner-join on them might be wrong or too early.
+;; [x] 1. Consecutive rules may not be related. inner-join on them might be wrong or too early.
 ;; [x] 2. Support more format for the :in nd the inputs parameters.
 ;; [x]  - [?item-name ?item-color]
 ;; [x]  - accept row sets for the inputs
 ;; [x] 3. Utility function `make-item->index`
 ;; [ ] 4. Wrong assumption about the patterns of the rules, where only the attribute is known.
 ;; [x] 5. Wrong assumption about the number of common-columns between 2 given tables to join. Not always 1.
+
+
+;; Note:
+;; - Each table is a rule applied to the db
+;; - When we join tables, we just group rules inside a (and rule1 rule2)
+;; - Joining all the tables together means putting all the rules inside a (and ...)
+;; - Selecting which tables to join means selecting which 2 rules to group.

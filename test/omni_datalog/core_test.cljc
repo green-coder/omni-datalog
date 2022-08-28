@@ -159,6 +159,18 @@
                resolvers
                db
                [["white"]])))
+  (testing "Reordering the rules should still work"
+    (is (= #{[0 "rose"] [1 "ball"]}
+           (set (o/q '[:find ?person-id ?item-name
+                       :in $ ?item-color
+                       :where
+                       [?p :person/id ?person-id]
+                       [?i :item/name ?item-name]
+                       [?i :item/color ?item-color]
+                       [?p :person/item ?i]]
+                      resolvers
+                      db
+                      [["white"]])))))
   (is (= [[0 "Alice" "rose"] [1 "Bob" "ball"]]
          (o/q '[:find ?person-id ?person-first-name ?item-name
                 :in $ ?item-color
@@ -171,8 +183,6 @@
                resolvers
                db
                [["white"]])))
-  ;; BUG !!!
-  #_
   (is (= [[0 "Alice" "rose"]]
          (o/q '[:find ?person-id ?person-first-name ?item-name
                 :in $ [?item-name ?item-color]
