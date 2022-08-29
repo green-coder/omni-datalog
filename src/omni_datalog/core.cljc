@@ -23,12 +23,20 @@
                        :where [k vs]))))
         query))
 
+(defn- make-item->index [coll]
+  (into {}
+        (map-indexed (fn [index item] [item index]))
+        coll))
+
 (defn- select-columns
   "Select parts of the rows, according to column indexes."
-  [rows column-indexes]
-  (mapv (fn [row]
-          (mapv row column-indexes))
-        rows))
+  [table selection-columns]
+  (let [[table-columns rows] table
+        table-column->index (make-item->index table-columns)
+        selection-indexes (mapv table-column->index selection-columns)]
+    (mapv (fn [row]
+            (mapv row selection-indexes))
+          rows)))
 
 (defn- extract-rows-from-db
   "Returns a sequence of rows."
@@ -36,13 +44,6 @@
   (let [[e a v] rule
         resolver (-> resolvers :a->ev a)]
     (resolver db)))
-
-#_(extract-rows-from-db resolvers db '[?p :person/id ?person-id])
-
-(defn- make-item->index [coll]
-  (into {}
-        (map-indexed (fn [index item] [item index]))
-        coll))
 
 (defn- common-columns-indexes
   "Returns the indexes of columns on which to perform a table join."
@@ -53,53 +54,42 @@
     [(mapv columns->index1 common-columns)
      (mapv columns->index2 common-columns)]))
 
-#_(common-columns-indexes '[x a b y] '[c d y x])
-
-;; Inner join between tables 1 and 2
-(defn- inner-join*
-  "Returns the inner join between two tables."
-  [rows1 column-indexes1 rows2 column-indexes2 columns2-count]
-  (let [result-indexes2 (into [] (remove (set column-indexes2)) (range columns2-count))
-        join-columns->rows1 (group-by (fn [row] (mapv row column-indexes1)) rows1)
-        join-columns->rows2 (group-by (fn [row] (mapv row column-indexes2)) rows2)]
-    (-> (for [join-value  (keys join-columns->rows1)
-              :let [result-rows1 (join-columns->rows1 join-value)
-                    result-rows2 (cond->> (join-columns->rows2 join-value)
-                                          (seq column-indexes2)
-                                          (mapv (fn [row]
-                                                  (mapv row result-indexes2))))]
-              left-row-part result-rows1
-              right-row-part result-rows2]
-          (into left-row-part right-row-part))
-        vec)))
-
-(defn inner-join-tables
+(defn- inner-join-tables
   "Joins 2 tables based on columns sharing the same name."
   ([] nil)
-  ([[rows columns]] [rows columns])
-  ([[rows1 columns1] [rows2 columns2]]
+  ([[columns rows]] [columns rows])
+  ([[columns1 rows1] [columns2 rows2]]
    (let [[column-indexes1 column-indexes2] (common-columns-indexes columns1 columns2)
-         result-indexes2 (into [] (remove (set column-indexes2)) (range (count columns2)))]
-     [(inner-join* rows1 column-indexes1 rows2 column-indexes2 (count columns2))
-      (into columns1 (mapv columns2 result-indexes2))])))
+         result-indexes2 (into [] (remove (set column-indexes2)) (range (count columns2)))
+         join-columns->rows1 (group-by (fn [row] (mapv row column-indexes1)) rows1)
+         join-columns->rows2 (group-by (fn [row] (mapv row column-indexes2)) rows2)]
+     [(into columns1 (mapv columns2 result-indexes2))
+      (-> (for [join-value  (keys join-columns->rows1)
+                :let [result-rows1 (join-columns->rows1 join-value)
+                      result-rows2 (cond->> (join-columns->rows2 join-value)
+                                            (seq column-indexes2)
+                                            (mapv (fn [row]
+                                                    (mapv row result-indexes2))))]
+                left-row-part result-rows1
+                right-row-part result-rows2]
+            (into left-row-part right-row-part))
+          vec)])))
 
 (defn q
   "Resolves a Datalog query."
   [query resolvers db & inputs]
   (let [{:keys [find in where]} (parse-query query)
         tables (mapv (fn [[e a v :as rule]]
-                       ;; [rows columns]
-                       [(extract-rows-from-db resolvers db rule) [e v]])
+                       ;; [columns rows]
+                       [[e v] (extract-rows-from-db resolvers db rule)])
                      where)
         tables (into tables
-                     (map (fn [in-rows in-columns]
-                            [in-rows in-columns])
-                          inputs
-                          in))
-        [results-rows result-columns] (reduce inner-join-tables tables)
-        result-column->index (make-item->index result-columns)
-        projection-indexes (mapv result-column->index find)]
-    (select-columns results-rows projection-indexes)))
+                     (map (fn [in-columns in-rows]
+                            [in-columns in-rows])
+                          in
+                          inputs))
+        result-table (reduce inner-join-tables tables)]
+    (select-columns result-table find)))
 
 ;; Improvements in the reference version:
 ;; [x] 1. Consecutive rules may not be related. inner-join on them might be wrong or too early.
