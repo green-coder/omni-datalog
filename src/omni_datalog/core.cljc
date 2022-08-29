@@ -44,7 +44,7 @@
         (map-indexed (fn [index item] [item index]))
         coll))
 
-(defn common-columns-indexes
+(defn- common-columns-indexes
   "Returns the indexes of columns on which to perform a table join."
   [columns1 columns2]
   (let [columns->index1 (make-item->index columns1)
@@ -95,30 +95,37 @@
         projection-indexes (mapv result-column->index find)]
     (select-columns results-rows projection-indexes)))
 
-;;;;;;;;;;;;;;;; Example of usage ;;;;;;;;;;;;;;;;
-
-(comment
-  ;; Resolves the query "by hand"
-  (let [rows1       ((-> resolvers :a->ev :person/id) db)
-        rows2       ((-> resolvers :a->ev :person/item) db)
-        rows3       ((-> resolvers :a->ev :item/name) db)
-        rows4       ((-> resolvers :a->ev :item/color) db)
-        rows-input1 [["white"]]]
-    (-> rows1
-        (inner-join* [0] rows2 [0])
-        (inner-join* [3] rows3 [0])
-        (inner-join* [3] rows4 [0])
-        (inner-join* [7] rows-input1 [0])
-        (select-columns [1 5])))
-  ,)
-
+;; Improvements in the reference version:
 ;; [x] 1. Consecutive rules may not be related. inner-join on them might be wrong or too early.
-;; [x] 2. Support more format for the :in nd the inputs parameters.
-;; [x]  - [?item-name ?item-color]
-;; [x]  - accept row sets for the inputs
+;; [x] 2. Support more format for the :in and the inputs parameters.
+;; [x]   - [?item-name ?item-color]
+;; [x]   - accept row sets for the inputs
 ;; [x] 3. Utility function `make-item->index`
-;; [ ] 4. Wrong assumption about the patterns of the rules, where only the attribute is known.
+;; [ ] 4. Wrong assumption about the patterns of the rules, where only the attribute is known (a->ev).
+;; [ ]   - Identify the columns already known in a new rule to process.
+;; [ ]   - Support resolver formats:
+;;         - ->eav,
+;;         - e->av, a->ev (done), v->ea, av->e, ev->a, ea->v
+;;         - e->a, e->v, a->e, a->v, v->e, v->a
+;; [ ]   - Support other ways than to compose tables using those resolver formats.
+;; [ ]   - (just for convenience) Recognize the constants in the rule's e-a-v triple.
+;;         - A constant entity is a vector literal representing a db path.
+;;         - A constant attribute is a keyword.
+;;         - A constant value is anything but a symbol which starts with a "?". `^:value` tag can be used if needed.
 ;; [x] 5. Wrong assumption about the number of common-columns between 2 given tables to join. Not always 1.
+;; [ ] 6. Remove duplicated columns during inner joins.
+;; [ ] 7. Support "filter" functions in rules.
+;; [ ] 8. Support "transform" functions in rules (one-to-one, one-to-many).
+;; [ ] 9. Support a way to bind to either collection values or the individual items inside.
+;;       - [?person :person/items ?items] vs [?person :person/item ?item]
+;;         - doable by using additional resolvers
+;;       - (convenience) [?person :person/items ?items] vs [?person :person/items [?item]], same as:
+;;         - [?person :person/items ?items]
+;;         - [(elements-of ?items) ?item]
+;;       - (convenience) [?person :person/name {?first :person.name/first, ?last :person.name/last}], same as:
+;;         - [?person :person/name ?name]
+;;         - [?name :person.name/first ?first]
+;;         - [?name :person.name/last ?last]
 
 
 ;; Note:

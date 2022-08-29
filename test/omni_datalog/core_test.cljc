@@ -86,6 +86,25 @@
 
 
 
+(comment
+  ;; Resolves the query "by hand"
+  (let [rows1       ((-> resolvers :a->ev :person/id) db)
+        rows2       ((-> resolvers :a->ev :person/item) db)
+        rows3       ((-> resolvers :a->ev :item/name) db)
+        rows4       ((-> resolvers :a->ev :item/color) db)
+        rows-input1 [["white"]]]
+    (-> rows1
+        (#'o/inner-join* [0] rows2 [0])
+        (#'o/inner-join* [3] rows3 [0])
+        (#'o/inner-join* [3] rows4 [0])
+        (#'o/inner-join* [7] rows-input1 [0])
+        (#'o/select-columns [1 5])))
+  ,)
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;; Testing ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (deftest parse-query-test
   (is (= '{:find [?person-id ?item-name],
