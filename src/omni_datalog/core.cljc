@@ -58,13 +58,19 @@
 ;; Inner join between tables 1 and 2
 (defn- inner-join*
   "Returns the inner join between two tables."
-  [rows1 column-indexes1 rows2 column-indexes2]
-  (let [xxx1 (group-by (fn [row] (mapv row column-indexes1)) rows1)
-        xxx2 (group-by (fn [row] (mapv row column-indexes2)) rows2)]
-    (-> (for [join-value (keys xxx1)
-              val1 (xxx1 join-value)
-              val2 (xxx2 join-value)]
-          (into val1 val2))
+  [rows1 column-indexes1 rows2 column-indexes2 columns2-count]
+  (let [result-indexes2 (into [] (remove (set column-indexes2)) (range columns2-count))
+        join-columns->rows1 (group-by (fn [row] (mapv row column-indexes1)) rows1)
+        join-columns->rows2 (group-by (fn [row] (mapv row column-indexes2)) rows2)]
+    (-> (for [join-value  (keys join-columns->rows1)
+              :let [result-rows1 (join-columns->rows1 join-value)
+                    result-rows2 (cond->> (join-columns->rows2 join-value)
+                                          (seq column-indexes2)
+                                          (mapv (fn [row]
+                                                  (mapv row result-indexes2))))]
+              left-row-part result-rows1
+              right-row-part result-rows2]
+          (into left-row-part right-row-part))
         vec)))
 
 (defn inner-join-tables
@@ -72,10 +78,10 @@
   ([] nil)
   ([[rows columns]] [rows columns])
   ([[rows1 columns1] [rows2 columns2]]
-   (let [[column-indexes1 column-indexes2] (common-columns-indexes columns1 columns2)]
-     ;; FIXME: get rid of redundant columns.
-     [(inner-join* rows1 column-indexes1 rows2 column-indexes2)
-      (into columns1 columns2)])))
+   (let [[column-indexes1 column-indexes2] (common-columns-indexes columns1 columns2)
+         result-indexes2 (into [] (remove (set column-indexes2)) (range (count columns2)))]
+     [(inner-join* rows1 column-indexes1 rows2 column-indexes2 (count columns2))
+      (into columns1 (mapv columns2 result-indexes2))])))
 
 (defn q
   "Resolves a Datalog query."
@@ -113,7 +119,7 @@
 ;;         - A constant attribute is a keyword.
 ;;         - A constant value is anything but a symbol which starts with a "?". `^:value` tag can be used if needed.
 ;; [x] 5. Wrong assumption about the number of common-columns between 2 given tables to join. Not always 1.
-;; [ ] 6. Remove duplicated columns during inner joins.
+;; [x] 6. Remove duplicated columns during inner joins.
 ;; [ ] 7. Support "filter" functions in rules.
 ;; [ ] 8. Support "transform" functions in rules (one-to-one, one-to-many).
 ;; [ ] 9. Support a way to bind to either collection values or the individual items inside.
