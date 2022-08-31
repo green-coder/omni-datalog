@@ -30,6 +30,9 @@
         (map-indexed (fn [index item] [item index]))
         coll))
 
+(defn- find-index [item coll]
+  ((make-item->index coll) item))
+
 (defn- select-columns
   "Select parts of the rows, according to column indexes."
   [relation selection-columns]
@@ -77,6 +80,27 @@
                            right-row-part result-rows2]
                        (into left-row-part right-row-part))
                      vec)))))
+
+;; To be considered later:
+;;   - e->a? (0 or 1)
+;;   - ea->v* (0 or more)
+
+(defn a->e [resolvers resolver-id db
+            entity-column]
+  (let [resolver (-> resolvers :a->e resolver-id)]
+    (->Relation [entity-column]
+                (mapv vector (resolver db)))))
+
+(defn ea->v [resolvers resolver-id db
+             entity-relation entity-column value-column]
+  (let [resolver (-> resolvers :ea->v resolver-id)
+        entity-column-index (find-index entity-column (:columns entity-relation))]
+    (->Relation (conj (:columns entity-relation) value-column)
+                (-> (for [row (:rows entity-relation)
+                          :let [entity (row entity-column-index)]
+                          value (resolver db entity)]
+                      (conj row value))
+                    vec))))
 
 (defn q
   "Resolves a Datalog query."

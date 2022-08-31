@@ -10,7 +10,8 @@
                   :items [{:name "apple"
                            :color "red"}
                           {:name "rose"
-                           :color "white"}]}
+                           :color "white"}]
+                  :in-room 0}
                1 {:name {:first "Bob"
                          :last "B-name"}
                   :items [{:name "letter"
@@ -25,6 +26,7 @@
 
 (def schema
   [:map
+   {:foo :bar}
    [:person/id [:map-of int? [:map
                               [:name [:map
                                       [:first string?]
@@ -39,6 +41,7 @@
                                               [:color string?]]]]]]]])
 
 #_(m/validate schema db)
+#_(m/ast schema)
 
 (def nav
   {:root              {nil []}

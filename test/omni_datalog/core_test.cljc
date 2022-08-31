@@ -9,7 +9,8 @@
                   :items [{:name "apple"
                            :color "red"}
                           {:name "rose"
-                           :color "white"}]}
+                           :color "white"}]
+                  :in-room 0}
                1 {:name {:first "Bob"
                          :last "B-name"}
                   :items [{:name "letter"
@@ -33,7 +34,19 @@
 
 ;; Most naive approach, where the query is resolved via full joins between tables.
 (def resolvers
-  {:a->ev {:person/id (fn [db]
+  {:a->e {:person-entity get-person-entities}
+   :ea->v {:person/id (fn [db person-entity]
+                        (when-some [person (peek person-entity)]
+                          [person]))
+           :person/first-name (fn [db person-entity]
+                                (let [name (-> (get-in db person-entity) :name)]
+                                  (when (contains? name :first)
+                                    [(:first name)])))
+           :person/last-name (fn [db person-entity]
+                               (let [name (-> (get-in db person-entity) :name)]
+                                 (when (contains? name :last)
+                                   [(:last name)])))}
+   :a->ev {:person/id (fn [db]
                         (->> (get-person-entities db)
                              (mapv (fn [person-entity]
                                      [person-entity (peek person-entity)]))))
@@ -84,8 +97,6 @@
                                                      :color)]))))))}})
 
 
-
-
 (comment
   ;; Resolves the query "by hand"
   (let [rel1        (o/->Relation '[?p ?person-id] ((-> resolvers :a->ev :person/id) db))
@@ -105,6 +116,27 @@
   ,)
 
 
+(comment
+  ;; Query which can use the implicit indexes of the db
+  (q [:find [?first-name ?last-name]
+      :when
+      [?p :person/first-name ?first-name]
+      [?p :person/last-name ?last-name]]
+     resolvers
+     db)
+
+  ;; Resolved by hand
+  (let [rel1 (o/a->e resolvers :person-entity db
+                     '?p)
+        rel2 (o/ea->v resolvers :person/first-name db
+                      rel1 '?p '?first-name)
+        rel3 (o/ea->v resolvers :person/last-name db
+                      rel2 '?p '?last-name)]
+    (#'o/select-columns rel3 '[?first-name ?last-name]))
+  ;; => [["Alice" "A-name"] ["Bob" "B-name"]]
+
+  ;; relation, resolver-path, rule
+  ,)
 
 
 ;;;;;;;;;;;;;;;;;;;;; Testing ;;;;;;;;;;;;;;;;;;;;;;;;;;;
