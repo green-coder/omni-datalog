@@ -88,21 +88,17 @@
 
 (comment
   ;; Resolves the query "by hand"
-  (let [table1 ['[?p ?person-id]
-                ((-> resolvers :a->ev :person/id) db)]
-        table2 ['[?p ?i]
-                ((-> resolvers :a->ev :person/item) db)]
-        table3 ['[?i ?item-name]
-                ((-> resolvers :a->ev :item/name) db)]
-        table4 ['[?i ?item-color]
-                ((-> resolvers :a->ev :item/color) db)]
-        rows-input1 ['[?item-color]
-                     [["white"]]]]
-    (-> table1
-        (#'o/inner-join-tables table2)
-        (#'o/inner-join-tables table3)
-        (#'o/inner-join-tables table4)
-        (#'o/inner-join-tables rows-input1)
+  (let [rel1        (o/->Relation '[?p ?person-id] ((-> resolvers :a->ev :person/id) db))
+        rel2        (o/->Relation '[?p ?i] ((-> resolvers :a->ev :person/item) db))
+        rel3        (o/->Relation '[?i ?item-name] ((-> resolvers :a->ev :item/name) db))
+        rel4        (o/->Relation '[?i ?item-color] ((-> resolvers :a->ev :item/color) db))
+        rows-input1 (o/->Relation '[?item-color]
+                                  [["white"]])]
+    (-> rel1
+        (#'o/inner-join rel2)
+        (#'o/inner-join rel3)
+        (#'o/inner-join rel4)
+        (#'o/inner-join rows-input1)
         (#'o/select-columns '[?person-id ?item-name])))
   ;; => [[0 "rose"] [1 "ball"]]
 
@@ -144,36 +140,36 @@
   (is (= [[0 1 2] [1 2 0]]
          (#'o/common-columns-indexes '[a b c] '[c a b]))))
 
-(deftest inner-join-tables-test
-  (is (= '[[?a ?b ?c ?d]
-           [[a1 b1 c1 d1]
-            [a1 b1 c1 d2]
-            [a2 b2 c2 d3]]]
-         (#'o/inner-join-tables '[[?a ?b ?c]
-                                  [[a1 b1 c1]
-                                   [a2 b2 c2]]]
-                                '[[?c ?d]
-                                  [[c1 d1]
-                                   [c1 d2]
-                                   [c2 d3]
-                                   [c3 d4]]])))
-  (is (= '[[?a ?b ?x ?y ?d]
-           [[a1 b1 c1 c1 d1]
-            [a1 b1 c1 c1 d2]
-            [a1 b1 c1 c2 d3]
-            [a1 b1 c1 c3 d4]
-            [a2 b2 c2 c1 d1]
-            [a2 b2 c2 c1 d2]
-            [a2 b2 c2 c2 d3]
-            [a2 b2 c2 c3 d4]]]
-         (#'o/inner-join-tables '[[?a ?b ?x]
-                                  [[a1 b1 c1]
-                                   [a2 b2 c2]]]
-                                '[[?y ?d]
-                                  [[c1 d1]
-                                   [c1 d2]
-                                   [c2 d3]
-                                   [c3 d4]]]))))
+(deftest inner-join-relations-test
+  (is (= (o/->Relation '[?a ?b ?c ?d]
+                       '[[a1 b1 c1 d1]
+                         [a1 b1 c1 d2]
+                         [a2 b2 c2 d3]])
+         (#'o/inner-join (o/->Relation '[?a ?b ?c]
+                                       '[[a1 b1 c1]
+                                         [a2 b2 c2]])
+                         (o/->Relation '[?c ?d]
+                                       '[[c1 d1]
+                                         [c1 d2]
+                                         [c2 d3]
+                                         [c3 d4]]))))
+  (is (= (o/->Relation '[?a ?b ?x ?y ?d]
+                       '[[a1 b1 c1 c1 d1]
+                         [a1 b1 c1 c1 d2]
+                         [a1 b1 c1 c2 d3]
+                         [a1 b1 c1 c3 d4]
+                         [a2 b2 c2 c1 d1]
+                         [a2 b2 c2 c1 d2]
+                         [a2 b2 c2 c2 d3]
+                         [a2 b2 c2 c3 d4]])
+         (#'o/inner-join (o/->Relation '[?a ?b ?x]
+                                       '[[a1 b1 c1]
+                                         [a2 b2 c2]])
+                         (o/->Relation '[?y ?d]
+                                       '[[c1 d1]
+                                         [c1 d2]
+                                         [c2 d3]
+                                         [c3 d4]])))))
 
 (deftest q-test
   (is (= [[0 "rose"] [1 "ball"]]
