@@ -106,6 +106,17 @@
                       (conj row value))
                     vec))))
 
+(defn av->e [resolvers resolver-id db
+             input-relation value-column entity-column]
+  (let [resolver (-> resolvers :av->e resolver-id)
+        value-column-index (find-index value-column (:columns input-relation))]
+    (->Relation (conj (:columns input-relation) entity-column)
+                (-> (for [row (:rows input-relation)
+                          :let [value (row value-column-index)]
+                          entity (resolver db value)]
+                      (conj row entity))
+                    vec))))
+
 (defn q
   "Resolves a Datalog query."
   [query resolvers db & inputs]
@@ -134,7 +145,7 @@
 ;;         - Important ones:
 ;; [x]       - a->ev (a.k.a. the relation builder)
 ;; [x]       - ea->v (a.k.a. the relation expander)
-;; [ ]       - av->e (a.k.a. the reverse relation expander)
+;; [x]       - av->e (a.k.a. the reverse relation expander)
 ;;         - Rarely needed / not sure to support them
 ;; [ ]       - e->av
 ;; [ ]       - ->eav

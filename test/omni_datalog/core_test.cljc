@@ -38,6 +38,16 @@
    #_#_
    :a->e {:person-entity get-person-entities}
 
+   ;; -> [entity ...]
+   :av->e {:item/color (fn [db item-color]
+                         (into []
+                               (filter (fn [item-entity]
+                                         (let [item (get-in db item-entity)]
+                                           (and (contains? item :color)
+                                                (= (:color item) item-color)))))
+                               (concat (get-person-item-entities db)
+                                       (get-room-item-entities db))))}
+
    ;; -> [value ...]
    :ea->v {:person/id (fn [_db person-entity]
                         (when-some [[_:person|id person-id] person-entity]
@@ -49,7 +59,11 @@
            :person/last-name (fn [db person-entity]
                                (let [name (-> (get-in db person-entity) :name)]
                                  (when (contains? name :last)
-                                   [(:last name)])))}
+                                   [(:last name)])))
+           :item/name (fn [db item-entity]
+                        (let [item (get-in db item-entity)]
+                          (when (contains? item :name)
+                            [(:name item)])))}
 
    ;; -> [[entity value] ...]
    :a->ev {:person/id (fn [db]
@@ -160,6 +174,30 @@
   ;; => [["Alice" "A-name"] ["Bob" "B-name"]]
 
   ;; relation, resolver-path, rule
+  ,)
+
+
+(comment
+  ;; Query which can use a reverse index av->e for [?i :item/color ?item-color]
+  (o/q '[:find ?item-name
+         :in $ ?item-color
+         :where
+         [?i :item/color ?item-color]
+         [?i :item/name ?item-name]]
+       resolvers
+       db
+       [["white"]])
+  ;; => [["rose"] ["ball"] ["wii"]]
+
+  ;; Resolved by hand
+  (let [input-rel1 (o/->Relation '[?item-color] [["white"]])
+        rel1 (o/av->e resolvers :item/color db input-rel1 '?item-color '?i)
+        rel2 (o/ea->v resolvers :item/name db rel1 '?i '?item-name)]
+    (-> rel2
+        (#'o/select-columns '[?item-name])
+        :rows))
+  ;; => [["rose"] ["ball"] ["wii"]]
+
   ,)
 
 
