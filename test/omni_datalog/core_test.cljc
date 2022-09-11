@@ -32,12 +32,16 @@
 (defn get-room-item-entities [db]
   (sp/select [:room/id (sp/putval :room/id) sp/ALL (sp/collect-one sp/FIRST) sp/LAST :items (sp/putval :items) sp/INDEXED-VALS sp/FIRST] db))
 
-;; Most naive approach, where the query is resolved via full joins between tables.
 (def resolvers
-  {:a->e {:person-entity get-person-entities}
-   :ea->v {:person/id (fn [db person-entity]
-                        (when-some [person (peek person-entity)]
-                          [person]))
+  {;; -> [entity ...]
+   ;; Not important at the moment
+   #_#_
+   :a->e {:person-entity get-person-entities}
+
+   ;; -> [value ...]
+   :ea->v {:person/id (fn [_db person-entity]
+                        (when-some [[_:person|id person-id] person-entity]
+                          [person-id]))
            :person/first-name (fn [db person-entity]
                                 (let [name (-> (get-in db person-entity) :name)]
                                   (when (contains? name :first)
@@ -46,6 +50,8 @@
                                (let [name (-> (get-in db person-entity) :name)]
                                  (when (contains? name :last)
                                    [(:last name)])))}
+
+   ;; -> [[entity value] ...]
    :a->ev {:person/id (fn [db]
                         (->> (get-person-entities db)
                              (mapv (fn [person-entity]
@@ -56,6 +62,12 @@
                                              [person-entity (-> (get-in db person-entity)
                                                                 :name
                                                                 :first)]))))
+           :person/last-name (fn [db]
+                               (->> (get-person-entities db)
+                                    (mapv (fn [person-entity]
+                                            [person-entity (-> (get-in db person-entity)
+                                                               :name
+                                                               :last)]))))
            :person/item (fn [db]
                           (->> (get-person-entities db)
                                (into []
@@ -98,19 +110,32 @@
 
 
 (comment
-  ;; Resolves the query "by hand"
-  (let [rel1        (o/->Relation '[?p ?person-id] ((-> resolvers :a->ev :person/id) db))
-        rel2        (o/->Relation '[?p ?i] ((-> resolvers :a->ev :person/item) db))
-        rel3        (o/->Relation '[?i ?item-name] ((-> resolvers :a->ev :item/name) db))
-        rel4        (o/->Relation '[?i ?item-color] ((-> resolvers :a->ev :item/color) db))
-        rows-input1 (o/->Relation '[?item-color]
-                                  [["white"]])]
+  ;; Datalog query
+  (o/q '[:find ?person-id ?item-name
+         :in $ ?item-color
+         :where
+         [?p :person/id ?person-id]
+         [?p :person/item ?i]
+         [?i :item/name ?item-name]
+         [?i :item/color ?item-color]]
+       resolvers
+       db
+       [["white"]])
+  ;; => [[0 "rose"] [1 "ball"]]
+
+  ;; This resolves the query "by hand" using only inner joins between relations.
+  (let [rel1        (o/a->ev resolvers :person/id db '?p '?person-id)
+        rel2        (o/a->ev resolvers :person/item db '?p '?i)
+        rel3        (o/a->ev resolvers :item/name db '?i '?item-name)
+        rel4        (o/a->ev resolvers :item/color db '?i '?item-color)
+        input-rel1  (o/->Relation '[?item-color] [["white"]])]
     (-> rel1
         (#'o/inner-join rel2)
         (#'o/inner-join rel3)
         (#'o/inner-join rel4)
-        (#'o/inner-join rows-input1)
-        (#'o/select-columns '[?person-id ?item-name])))
+        (#'o/inner-join input-rel1)
+        (#'o/select-columns '[?person-id ?item-name])
+        :rows))
   ;; => [[0 "rose"] [1 "ball"]]
 
   ,)
@@ -118,21 +143,20 @@
 
 (comment
   ;; Query which can use the implicit indexes of the db
-  (q [:find [?first-name ?last-name]
-      :when
-      [?p :person/first-name ?first-name]
-      [?p :person/last-name ?last-name]]
-     resolvers
-     db)
+  (o/q '[:find ?first-name ?last-name
+         :where
+         [?p :person/first-name ?first-name]
+         [?p :person/last-name ?last-name]]
+       resolvers
+       db)
+  ;; => [["Alice" "A-name"] ["Bob" "B-name"]]
 
   ;; Resolved by hand
-  (let [rel1 (o/a->e resolvers :person-entity db
-                     '?p)
-        rel2 (o/ea->v resolvers :person/first-name db
-                      rel1 '?p '?first-name)
-        rel3 (o/ea->v resolvers :person/last-name db
-                      rel2 '?p '?last-name)]
-    (#'o/select-columns rel3 '[?first-name ?last-name]))
+  (let [rel1 (o/a->ev resolvers :person/first-name db '?p '?first-name)
+        rel2 (o/ea->v resolvers :person/last-name db rel1 '?p '?last-name)]
+    (-> rel2
+        (#'o/select-columns '[?first-name ?last-name])
+        :rows))
   ;; => [["Alice" "A-name"] ["Bob" "B-name"]]
 
   ;; relation, resolver-path, rule

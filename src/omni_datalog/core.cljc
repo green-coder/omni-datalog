@@ -1,9 +1,5 @@
 (ns omni-datalog.core)
 
-;; Ideas: it looks like the datalog queries could be based on pull queries.
-;; If at some point we can be generic enough, it means that we could be based on pathom !!!
-;; networked datalog queries in sight - WOOT!!
-
 (defrecord Relation [columns rows])
 
 (defn parse-query
@@ -34,13 +30,14 @@
   ((make-item->index coll) item))
 
 (defn- select-columns
-  "Select parts of the rows, according to column indexes."
+  "Returns a relation with only the selected columns."
   [relation selection-columns]
   (let [rel-column->index (make-item->index (:columns relation))
         selection-indexes (mapv rel-column->index selection-columns)]
-    (mapv (fn [row]
-            (mapv row selection-indexes))
-          (:rows relation))))
+    (->Relation selection-columns
+                (mapv (fn [row]
+                        (mapv row selection-indexes))
+                      (:rows relation)))))
 
 (defn- extract-rows-from-db
   "Returns a sequence of rows."
@@ -81,22 +78,29 @@
                        (into left-row-part right-row-part))
                      vec)))))
 
-;; To be considered later:
+;; To be considered as a small implementation optimisation, later:
 ;;   - e->a? (0 or 1)
 ;;   - ea->v* (0 or more)
 
-(defn a->e [resolvers resolver-id db
-            entity-column]
-  (let [resolver (-> resolvers :a->e resolver-id)]
-    (->Relation [entity-column]
-                (mapv vector (resolver db)))))
+(defn a->ev [resolvers resolver-id db
+             entity-column value-column]
+  (let [resolver (-> resolvers :a->ev resolver-id)]
+    (->Relation [entity-column value-column]
+                (resolver db))))
+
+;; Not important at the moment
+#_(defn a->e [resolvers resolver-id db
+              entity-column]
+    (let [resolver (-> resolvers :a->e resolver-id)]
+      (->Relation [entity-column]
+                  (mapv vector (resolver db)))))
 
 (defn ea->v [resolvers resolver-id db
-             entity-relation entity-column value-column]
+             input-relation entity-column value-column]
   (let [resolver (-> resolvers :ea->v resolver-id)
-        entity-column-index (find-index entity-column (:columns entity-relation))]
-    (->Relation (conj (:columns entity-relation) value-column)
-                (-> (for [row (:rows entity-relation)
+        entity-column-index (find-index entity-column (:columns input-relation))]
+    (->Relation (conj (:columns input-relation) value-column)
+                (-> (for [row (:rows input-relation)
                           :let [entity (row entity-column-index)]
                           value (resolver db entity)]
                       (conj row value))
@@ -116,7 +120,7 @@
                              in
                              inputs))
         result-relation (reduce inner-join relations)]
-    (select-columns result-relation find)))
+    (:rows (select-columns result-relation find))))
 
 ;; Improvements in the reference version:
 ;; [x] 1. Consecutive rules may not be related. inner-join on them might be wrong or too early.
@@ -126,10 +130,23 @@
 ;; [x] 3. Utility function `make-item->index`
 ;; [ ] 4. Wrong assumption about the patterns of the rules, where only the attribute is known (a->ev).
 ;; [ ]   - Identify the columns already known in a new rule to process.
-;; [ ]   - Support resolver formats:
-;;         - ->eav,
-;;         - e->av, a->ev (done), v->ea, av->e, ev->a, ea->v
-;;         - e->a, e->v, a->e, a->v, v->e, v->a
+;;       - Support resolver formats:
+;;         - Important ones:
+;; [x]       - a->ev (a.k.a. the relation builder)
+;; [x]       - ea->v (a.k.a. the relation expander)
+;; [ ]       - av->e (a.k.a. the reverse relation expander)
+;;         - Rarely needed / not sure to support them
+;; [ ]       - e->av
+;; [ ]       - ->eav
+;; [ ]       - ev->a
+;; [ ]       - v->ea
+;;         - Those can be derived from the above:
+;; [ ]       - e->a
+;; [ ]       - e->v
+;; [ ]       - a->e
+;; [ ]       - a->v
+;; [ ]       - v->e
+;; [ ]       - v->a
 ;; [ ]   - Support other ways than to compose relations using those resolver formats.
 ;; [ ]   - (just for convenience) Recognize the constants in the rule's e-a-v triple.
 ;;         - A constant entity is a vector literal representing a db path.
