@@ -1,4 +1,6 @@
-(ns omni-datalog.core)
+(ns omni-datalog.core
+  (:require [clojure.string :as str]
+            [mate.core :as mc]))
 
 (defrecord Relation [columns rows])
 
@@ -116,6 +118,53 @@
                           entity (resolver db value)]
                       (conj row entity))
                     vec))))
+
+(defn- variable? [x]
+  (and (symbol? x) (str/starts-with? (name x) "?")))
+
+(defn sanitize-query
+  "Returns a parsed query which only keeps:
+   1. The variables in :find
+   2. The rules which are transitively related to the variables in :find
+   3. The inputs referenced in those rules"
+  [parsed-query]
+  (let [{:keys [find in where]} parsed-query
+        find-set (->> (flatten find)
+                      (filter variable?)
+                      (set))
+        rule->vars (into {}
+                         (map (fn [rule]
+                                [rule (filterv variable? (flatten rule))]))
+                         where)
+        var->rules (->> where
+                        (mapcat (fn [rule]
+                                  (->> (rule->vars rule)
+                                       (mapv (fn [rule-element]
+                                               [rule-element rule])))))
+                        (filter (fn [[rule-element _rule]] (variable? rule-element)))
+                        (mc/group-by first second))
+        [searched-vars required-rules] (loop [vars-to-search find-set
+                                              searched-vars #{}
+                                              required-rules #{}]
+                                         (if (empty? vars-to-search)
+                                           [searched-vars required-rules]
+                                           (let [new-rules (mapcat var->rules vars-to-search)
+                                                 searched-vars (into searched-vars vars-to-search)
+                                                 required-rules (into required-rules new-rules)
+                                                 new-vars-to-search (into #{}
+                                                                          (comp (mapcat rule->vars)
+                                                                                (remove searched-vars))
+                                                                          new-rules)]
+                                             (recur new-vars-to-search
+                                                    searched-vars
+                                                    required-rules))))]
+    {:find find
+     :in (filterv (fn [input]
+                    (->> (flatten input)
+                         (filter variable?)
+                         (some searched-vars)))
+                  in)
+     :where (filterv required-rules where)}))
 
 (defn q
   "Resolves a Datalog query."

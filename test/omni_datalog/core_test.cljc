@@ -265,6 +265,24 @@
                                          [c2 d3]
                                          [c3 d4]])))))
 
+(deftest sanitize-query-test
+  (is (= (o/parse-query '[:find ?a ?b
+                          :in [?in1a ?in1b]
+                          :where
+                          [?a :r1 ?b]
+                          [?a :r4 ?in1a]
+                          [?x ?b 1]
+                          [?e :r3 ?x]])
+         (o/sanitize-query (o/parse-query '[:find ?a ?b
+                                            :in [?in1a ?in1b] ?in2
+                                            :where
+                                            [?a :r1 ?b]
+                                            [?a :r4 ?in1a]
+                                            [?c :r2 ?d]
+                                            [?x ?b 1]
+                                            [?e :r3 ?x]
+                                            [?y :r4 ?in2]])))))
+
 (deftest q-test
   (is (= [[0 "rose"] [1 "ball"]]
          (o/q '[:find ?person-id ?item-name
