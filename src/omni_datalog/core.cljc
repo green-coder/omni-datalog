@@ -41,6 +41,7 @@
                         (mapv row selection-indexes))
                       (:rows relation)))))
 
+;; FIXME: this function assumes that the attribute is always know, which is not always true.
 (defn- extract-rows-from-db
   "Returns a sequence of rows."
   [resolvers db rule]
@@ -84,18 +85,17 @@
 ;;   - e->a? (0 or 1)
 ;;   - ea->v* (0 or more)
 
+(defn a->e [resolvers resolver-id db
+            entity-column]
+  (let [resolver (-> resolvers :a->e resolver-id)]
+    (->Relation [entity-column]
+                (mapv vector (resolver db)))))
+
 (defn a->ev [resolvers resolver-id db
              entity-column value-column]
   (let [resolver (-> resolvers :a->ev resolver-id)]
     (->Relation [entity-column value-column]
                 (resolver db))))
-
-;; Not important at the moment
-#_(defn a->e [resolvers resolver-id db
-              entity-column]
-    (let [resolver (-> resolvers :a->e resolver-id)]
-      (->Relation [entity-column]
-                  (mapv vector (resolver db)))))
 
 (defn ea->v [resolvers resolver-id db
              input-relation entity-column value-column]

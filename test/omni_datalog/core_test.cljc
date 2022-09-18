@@ -32,11 +32,18 @@
 (defn get-room-item-entities [db]
   (sp/select [:room/id (sp/putval :room/id) sp/ALL (sp/collect-one sp/FIRST) sp/LAST :items (sp/putval :items) sp/INDEXED-VALS sp/FIRST] db))
 
+(defn get-item-entities [db]
+  (concat (get-person-item-entities db)
+          (get-room-item-entities db)))
+
 (def resolvers
   {;; -> [entity ...]
-   ;; Not important at the moment
-   #_#_
-   :a->e {:person-entity get-person-entities}
+   :a->e {:person/id get-person-entities
+          :person/first-name get-person-entities
+          :person/last-name get-person-entities
+          :person/item get-person-entities
+          :item/name get-item-entities
+          :item/color get-item-entities}
 
    ;; -> [entity ...]
    :av->e {:item/color (fn [db item-color]
@@ -65,6 +72,7 @@
                           (when (contains? item :name)
                             [(:name item)])))}
 
+   ; Note: an alternate resolution way to a->ev is a->e + ea->v
    ;; -> [[entity value] ...]
    :a->ev {:person/id (fn [db]
                         (->> (get-person-entities db)
@@ -166,9 +174,10 @@
   ;; => [["Alice" "A-name"] ["Bob" "B-name"]]
 
   ;; Resolved by hand
-  (let [rel1 (o/a->ev resolvers :person/first-name db '?p '?first-name)
-        rel2 (o/ea->v resolvers :person/last-name db rel1 '?p '?last-name)]
-    (-> rel2
+  (let [rel1 (o/a->e resolvers :person/first-name db '?p)
+        rel2 (o/ea->v resolvers :person/first-name db rel1 '?p '?first-name)
+        rel3 (o/ea->v resolvers :person/last-name db rel2 '?p '?last-name)]
+    (-> rel3
         (#'o/select-columns '[?first-name ?last-name])
         :rows))
   ;; => [["Alice" "A-name"] ["Bob" "B-name"]]
